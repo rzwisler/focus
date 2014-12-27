@@ -1,0 +1,125 @@
+#!/usr/bin/perl -w
+#
+# This script allows you to change focus based on the relative orientation of
+# windows on the desktop.
+#
+# Usage: focus [up|down|left|right]
+
+chomp($c_id = `xprop -root 32x '\t\$0' _NET_ACTIVE_WINDOW | cut -f2`);
+
+if ($#ARGV != 0 or ($ARGV[0] ne "up" &&
+		    $ARGV[0] ne "down" &&
+	    	    $ARGV[0] ne "left" &&
+		    $ARGV[0] ne "right")) {
+	print "Usage: focus [up|down|left|right]\n";
+	exit 0;
+}
+
+foreach (`wmctrl -d`) {
+	if (m/(\d)  \* DG:/) {
+		$desktop = $1;
+	}
+}
+
+foreach (`wmctrl -l -G`) {
+	if (($id, $x, $y, $width, $height) = 
+	    (/^(0x[0-9a-f]+)  $desktop +(\d+) +(\d+) +(\d+) +(\d+)/)) {
+	    if (hex($id) eq hex($c_id)) {
+		$current{left} 	= int($x);
+		$current{right} 	= int($x) + int($width);
+		$current{top} 		= int($y);
+		$current{bottom} 	= int($y) + int($height);
+	    } else {
+		$window{$id}{left} 	= int($x);
+		$window{$id}{right} 	= int($x) + int($width);
+		$window{$id}{top} 	= int($y);
+		$window{$id}{bottom} 	= int($y) + int($height);
+	    }
+	}
+}
+
+sub x_overlap {
+	return ($current{left}  <= $window{$_[0]}{right} &&
+	        $current{right} >= $window{$_[0]}{left});
+}
+
+sub y_overlap {
+	return ($current{top}    <= $window{$_[0]}{bottom} &&
+	        $current{bottom} >= $window{$_[0]}{top});
+}
+
+sub left {
+	return ($current{left} >= $window{$_[0]}{left});
+}
+
+sub right {
+	return ($current{right} <= $window{$_[0]}{right});
+}
+
+sub above {
+	return ($current{top} >= $window{$_[0]}{top});
+}
+
+sub below {
+	return ($current{bottom} <= $window{$_[0]}{bottom});
+}
+
+if ($ARGV[0] eq "up") {
+	$focus_id = "";
+	$bottom_edge = 0;
+	foreach $id (keys %window) {
+		if (x_overlap($id) and above($id)) {
+			if ($focus_id eq "" or 
+			    $window{$id}{bottom} > $bottom_edge) {
+				$focus_id = $id;
+				$bottom_edge = $window{$id}{bottom};
+			}
+		}
+	}
+	system("wmctrl -i -R $focus_id") if ($focus_id ne "");
+}
+
+if ($ARGV[0] eq "down") {
+	$focus_id = "";
+	$top_edge = 0;
+	foreach $id (keys %window) {
+		if (x_overlap($id) and below($id)) {
+			if ($focus_id eq "" or 
+			    $window{$id}{top} < $top_edge) {
+				$focus_id = $id;
+				$top_edge = $window{$id}{top};
+			}
+		}
+	}
+	system("wmctrl -i -R $focus_id") if ($focus_id ne "");
+}
+
+if ($ARGV[0] eq "left") {
+	$focus_id = "";
+	$right_edge = 0;
+	foreach $id (keys %window) {
+		if (y_overlap($id) and left($id)) {
+			if ($focus_id eq "" or 
+			    $window{$id}{right} > $right_edge) {
+				$focus_id = $id;
+				$right_edge = $window{$id}{right};
+			}
+		}
+	}
+	system("wmctrl -i -R $focus_id") if ($focus_id ne "");
+}
+
+if ($ARGV[0] eq "right") {
+	$focus_id = "";
+	$left_edge = 0;
+	foreach $id (keys %window) {
+		if (y_overlap($id) and right($id)) {
+			if ($focus_id eq "" or 
+			    $window{$id}{left} < $left_edge) {
+				$focus_id = $id;
+				$left_edge = $window{$id}{left};
+			}
+		}
+	}
+	system("wmctrl -i -R $focus_id") if ($focus_id ne "");
+}
